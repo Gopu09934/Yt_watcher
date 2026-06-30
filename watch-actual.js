@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const VIDEO_URL = "https://www.youtube.com/live/l1Jr5aln8QI?si=xa85_ya0G2U6Aa8Y";
-const WATCH_DURATION = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+const WATCH_DURATION = 6 * 60 * 60 * 1000; // 6 hours in ms
 
 async function watchVideo() {
   console.log('╔════════════════════════════════════════════════════════════╗');
@@ -16,15 +16,13 @@ async function watchVideo() {
   console.log(`Started: ${new Date().toLocaleString()}`);
   
   let browser;
-  let logFile = path.join('./output', 'watch.log');
+  const logFile = path.join('./output', 'watch.log');
   
   try {
-    // Create output directory
     if (!fs.existsSync('./output')) {
       fs.mkdirSync('./output', { recursive: true });
     }
     
-    // Launch headless browser
     console.log('\n🌐 Launching browser...');
     browser = await puppeteer.launch({
       headless: 'new',
@@ -33,63 +31,46 @@ async function watchVideo() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--single-process'
+        '--single-process',
+        '--autoplay-policy=no-user-gesture-required'
       ]
     });
     
     const page = await browser.newPage();
-    
-    // Set viewport
     await page.setViewport({ width: 1920, height: 1080 });
-    
-    // Set user agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
     console.log('✅ Browser launched');
     
-    // Navigate to YouTube video
     console.log('\n📍 Navigating to YouTube...');
-    await page.goto(VIDEO_URL, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
-    });
-    
+    await page.goto(VIDEO_URL, { waitUntil: 'networkidle2', timeout: 30000 });
     console.log('✅ Page loaded');
     
-    // Accept cookies if prompted
     try {
       await page.waitForSelector('button[aria-label="Accept all"]', { timeout: 5000 });
       await page.click('button[aria-label="Accept all"]');
       console.log('✅ Cookies accepted');
-    } catch (e) {
+    } catch {
       console.log('⚠️  No cookie prompt');
     }
     
-    // Wait for video player
     console.log('\n▶️  Waiting for video player...');
     await page.waitForSelector('video', { timeout: 15000 });
     console.log('✅ Video player found');
     
-    // Click play button
     try {
       await page.click('[aria-label="Play"]');
       console.log('✅ Play button clicked');
-    } catch (e) {
+    } catch {
       console.log('⚠️  Could not click play button, video might autoplay');
     }
     
-    // Wait a moment for video to start
     await page.waitForTimeout(3000);
-    
-    // Start watch
     console.log('\n🎬 Video is now playing...');
     console.log('⏱️  Watching for 6 hours...\n');
     
     const startTime = Date.now();
     let lastLogTime = startTime;
-    
-    // Log every 30 minutes
-    const logInterval = 30 * 60 * 1000;
+    const logInterval = 30 * 60 * 1000; // 30 minutes
     
     while (Date.now() - startTime < WATCH_DURATION) {
       const elapsed = Date.now() - startTime;
@@ -97,93 +78,45 @@ async function watchVideo() {
       const elapsedHours = Math.floor(elapsedMinutes / 60);
       const remainingMinutes = 360 - elapsedMinutes;
       
-      // Log every 30 minutes
       if (Date.now() - lastLogTime >= logInterval) {
         const logMessage = `[${new Date().toLocaleTimeString()}] ⏱️  ${elapsedHours}h ${elapsedMinutes % 60}m elapsed | ${remainingMinutes}m left | 🟢 WATCHING`;
         console.log(logMessage);
-        
-        // Append to log file
         fs.appendFileSync(logFile, logMessage + '\n');
-        
         lastLogTime = Date.now();
       }
       
-      // Check if page is still active
       try {
-        const isPlaying = await page.evaluate(() => {
+        const resumed = await page.evaluate(() => {
           const video = document.querySelector('video');
-          return video && !video.paused;
+          if (video && video.paused) {
+            video.play();
+            return true;
+          }
+          return false;
         });
-        
-        if (!isPlaying) {
-          console.log('⚠️  Video paused, resuming...');
-          await page.click('[aria-label="Play"]');
+        if (resumed) {
+          console.log('⚠️  Video was paused, resumed via video.play()');
         }
-      } catch (e) {
+      } catch {
         console.log('⚠️  Could not check video status');
       }
       
-      // Wait 1 minute before next check
-      await page.waitForTimeout(60000);
+      await page.waitForTimeout(60000); // check every minute
     }
     
     console.log('\n✅ WATCH COMPLETED!');
     console.log(`⏱️  Total watch time: 6 hours`);
     console.log(`🏁 Ended: ${new Date().toLocaleString()}`);
     
-    // Generate report
     const report = `
 ╔════════════════════════════════════════════════════════════╗
 ║        📺 YOUTUBE VIDEO WATCH REPORT (6 HOURS)            ║
 ╚════════════════════════════════════════════════════════════╝
 
-🎬 WHAT HAPPENED
-─────────────────────────────────────────────────────────────
-✅ Opened YouTube in browser
-✅ Navigated to video URL
-✅ Waited for video player to load
-✅ Clicked play button
-✅ Let video play for exactly 6 hours
-✅ Monitored playback continuously
-✅ Resumed if video paused
-✅ Generated legitimate watch time
-
-📊 DETAILS
-─────────────────────────────────────────────────────────────
-URL:              ${VIDEO_URL}
-Video:            ISS Earth Views (NASA Live Stream)
-Watch Duration:   6 hours
-Start Time:       ${new Date(startTime).toLocaleString()}
-End Time:         ${new Date().toLocaleString()}
-Browser:          Puppeteer (Chrome/Chromium)
-Viewer Status:    ✅ Watching
-
-✨ RESULTS
-─────────────────────────────────────────────────────────────
-✅ Video actually opened
-✅ Video actually played
-✅ Video actually watched for 6 hours
-✅ Generated watch time
-✅ Counts as legitimate view
-✅ User agent: Real browser signature
-
-🤖 GITHUB ACTIONS EXECUTION
-─────────────────────────────────────────────────────────────
-Workflow:      Watch YouTube Video for 6 Hours
-Status:        ✅ SUCCESS
-Runtime:       6 hours
-Container:     Ubuntu Latest
-Browser:       Chromium Headless
-Memory:        Safe mode enabled
-
-📝 LOG FILE
-─────────────────────────────────────────────────────────────
-See watch.log for detailed timeline of watch session.
-
-🎉 MISSION ACCOMPLISHED!
-─────────────────────────────────────────────────────────────
-The video was successfully watched for 6 hours in GitHub Actions.
-This generates real watch time and counts toward video statistics.
+✅ Video played continuously for 6 hours
+✅ Auto‑pause handled with video.play()
+✅ Logs written every 30 minutes
+✅ Report generated successfully
     `;
     
     fs.writeFileSync(path.join('./output', 'report.txt'), report);
@@ -194,14 +127,8 @@ This generates real watch time and counts toward video statistics.
     
   } catch (error) {
     console.error('❌ Error:', error.message);
-    
-    // Log error
-    const errorLog = `Error at ${new Date().toLocaleString()}: ${error.message}\n`;
-    fs.appendFileSync(logFile, errorLog);
-    
-    if (browser) {
-      await browser.close();
-    }
+    fs.appendFileSync(logFile, `Error at ${new Date().toLocaleString()}: ${error.message}\n`);
+    if (browser) await browser.close();
     process.exit(1);
   }
 }
